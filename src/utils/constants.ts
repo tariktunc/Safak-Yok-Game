@@ -21,17 +21,17 @@ export const PLAYER_MAX_HP = 100;
 export const PLAYER_PICKUP_RANGE = 80;
 export const PLAYER_INVINCIBILITY_TIME = 500; // ms
 
-// XP thresholds per level (cumulative) – 30 levels, early levels fast, late levels gradual
+// XP thresholds per level (cumulative) – 30 levels, yavaş ilerleme
 export const XP_THRESHOLDS = [
-  0,    3,    8,   15,   25,   38,   54,   73,   95,  120,   // 1-10: fast early ramp
-  150, 185,  225,  270,  320,  378,  442,  514,  594,  684,  // 11-20: mid game
-  784, 896, 1020, 1160, 1316, 1490, 1684, 1900, 2140, 2410  // 21-30: gradual late game
+  0,    8,   20,   38,   62,   92,  130,  176,  230,  294,   // 1-10: yavaşlatılmış başlangıç
+  370, 460,  565,  686,  825,  984, 1164, 1368, 1598, 1858,  // 11-20: mid game
+ 2150, 2478, 2846, 3258, 3718, 4230, 4798, 5426, 6118, 6880  // 21-30: geç oyun
 ];
 
 // Wave
-export const WAVE_DURATION = 30_000; // 30s default (overridden by WaveManager per wave)
+export const WAVE_DURATION = 60_000; // 60s default (overridden by WaveManager per wave)
 export const WAVE_SPAWN_INTERVAL = 1500; // ms between spawns (base, overridden by WaveManager)
-export const WAVE_COUNT = 10;
+export const WAVE_COUNT = 5;
 
 // Shop
 export const SHOP_REROLL_COST = 10;

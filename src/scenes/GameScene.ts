@@ -865,6 +865,11 @@ export class GameScene extends Phaser.Scene {
     const statsDamage = this.waveDamageTaken;
     const statsGold = this.waveGoldEarned;
 
+    // Her dalga bitiminde kazanılan altını bankaya ekle
+    if (this.waveGoldEarned > 0) {
+      this.saveManager.addGold(this.waveGoldEarned);
+    }
+
     this.showWaveCompleteAnnouncement(completedWave, () => {
       // E3: Show wave statistics overlay for 2 seconds, then open shop
       this.showWaveStatistics(statsKills, statsDamage, statsGold, () => {

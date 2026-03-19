@@ -134,7 +134,7 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillRect(ox + 28*s, 22*s, 8*s, 8*s);
 
     // --- Kafa görseli (üst %40, ortalı) ---
-    const headSize = 28 * s; // kafanın boyutu
+    const headSize = 36 * s; // kafanın boyutu
     const headX = ox + (frameSize / 2) - (headSize / 2);
     const headY = 0;
     if (this.textures.exists(faceKey)) {
