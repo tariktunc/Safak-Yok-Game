@@ -231,6 +231,18 @@ export class GameScene extends Phaser.Scene {
         // Pasif itemler
         this.player.passiveItems.push(...runSave.passiveItems);
 
+        // crit_up pasifi — her biri +5% ekler, devam kaydından restore et
+        const critUpCount = runSave.passiveItems.filter(p => p === 'crit_up').length;
+        if (critUpCount > 0) {
+          this.critChance = Math.min(0.15 + critUpCount * 0.05, 0.40);
+        }
+
+        // dash_up pasifi — devam kaydından restore et
+        const dashUpCount = runSave.passiveItems.filter(p => p === 'dash_up').length;
+        if (dashUpCount > 0) {
+          (this.player as any).DASH_COOLDOWN = Math.max(800, 1500 * Math.pow(0.80, dashUpCount));
+        }
+
         // hp_regen pasifi için timer kur
         const regenCount = runSave.passiveItems.filter(p => p === 'hp_regen').length;
         if (regenCount > 0) {
@@ -410,16 +422,20 @@ export class GameScene extends Phaser.Scene {
 
   private setupCollisionCallbacks(): void {
     this.collisionSystem.onEnemyHit = (enemy, damage, _proj) => {
-      // Task 11: Critical hit system — luck ile ölçeklenir (temel %15, max %40)
-      const critChance = Math.min(0.15 * this.player.stats.luck, 0.40);
+      // Kritik vuruş: this.critChance (crit_up pasifi ile artar) × luck çarpanı, maks %40
+      const critChance = Math.min(this.critChance * this.player.stats.luck, 0.40);
       const isCrit = Math.random() < critChance;
       let finalDamage = damage;
       if (isCrit) {
         finalDamage = damage * 2;
-        // BUG-2: Ek crit hasarını yalnızca düşman hâlâ hayattaysa uygula;
-        // onEnemyKilled'ı CollisionSystem zaten çağıracak, burada tekrar çağırma.
+        // Crit extra hasar: base hasar öldürmediyse ekstra 1x uygula.
+        // Eğer bu ekstra hasar düşmanı öldürürse onEnemyKilled'ı manuel tetikle —
+        // CollisionSystem bunu yakalamaz (killed flag base hasar sonucuna bakıyor).
         if (enemy.active && enemy.currentHp > 0) {
-          enemy.takeDamage(damage);
+          const critKilled = enemy.takeDamage(damage);
+          if (critKilled) {
+            this.collisionSystem.onEnemyKilled?.(enemy);
+          }
         }
         this.showCritFlash(enemy.x, enemy.y);
       }
