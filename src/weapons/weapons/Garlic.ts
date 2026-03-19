@@ -2,123 +2,130 @@ import Phaser from 'phaser';
 import { WeaponBase } from '../WeaponBase';
 import { Player } from '../../entities/Player';
 import { Enemy } from '../../entities/Enemy';
-import { ARENA_WIDTH, ARENA_HEIGHT } from '../../utils/constants';
-import { clamp } from '../../utils/math';
 
 export class Garlic extends WeaponBase {
   private enemies: Enemy[];
-  private auraGraphics: Phaser.GameObjects.Graphics;
-  private pulseTime: number = 0;
-  private readonly KNOCKBACK_FORCE: number = 40;
+  private gfx: Phaser.GameObjects.Graphics;
+  private orbitAngle: number = 0;
+  private hitCooldowns: Map<Enemy, number> = new Map();
+  private readonly HIT_COOLDOWN = 600; // aynı düşmana tekrar vurma süresi (ms)
 
   constructor(scene: Phaser.Scene, owner: Player, enemies: Enemy[]) {
     super(scene, owner, {
       id: 'garlic',
-      name: 'Sarımsak',
-      damage: 5,
-      cooldown: 250,
+      name: 'Dönen Bıçaklar',
+      damage: 10,
+      cooldown: 9999999, // attack() kullanılmıyor
       projectileSpeed: 0,
       projectileCount: 0,
       pierce: 0,
-      range: 120,
+      range: 100,
       type: 'aura'
     });
     this.enemies = enemies;
+    this.gfx = scene.add.graphics().setDepth(9);
+  }
 
-    // Create a graphics object for the aura circle
-    this.auraGraphics = scene.add.graphics();
-    this.auraGraphics.setDepth(3);
+  /** Seviyeye göre bıçak sayısı: 3→4→5→6 */
+  private get knifeCount(): number {
+    return Math.min(3 + Math.floor(this.level / 2), 8);
   }
 
   update(delta: number): void {
-    super.update(delta);
+    // super.update() çağrılmıyor — attack() döngüsü kullanmıyoruz
+    this.orbitAngle += delta * 0.0028;
 
-    // Update pulse animation
-    this.pulseTime += delta * 0.004;
+    // Per-enemy cooldown güncelle
+    for (const [enemy, cd] of this.hitCooldowns) {
+      const remaining = cd - delta;
+      if (remaining <= 0) {
+        this.hitCooldowns.delete(enemy);
+      } else {
+        this.hitCooldowns.set(enemy, remaining);
+      }
+    }
 
-    // Draw aura circle centered on the player
-    this.drawAura();
+    this.checkKnifeHits();
+    this.drawKnives();
   }
 
   attack(): void {
-    const range = this.data.range;
-    const rangeSq = range * range;
+    // Orbital silahta kullanılmıyor
+  }
+
+  private checkKnifeHits(): void {
+    const radius = this.data.range;
     const damage = this.effectiveDamage;
+    const count = this.knifeCount;
+    const HIT_R = 16 * 16; // bıçak çarpışma yarıçapı karesi
 
-    for (const enemy of this.enemies) {
-      if (!enemy.active) continue;
+    for (let k = 0; k < count; k++) {
+      const angle = this.orbitAngle + (k / count) * Math.PI * 2;
+      const kx = this.owner.x + Math.cos(angle) * radius;
+      const ky = this.owner.y + Math.sin(angle) * radius;
 
-      const dx = enemy.x - this.owner.x;
-      const dy = enemy.y - this.owner.y;
-      const distSq = dx * dx + dy * dy;
-
-      if (distSq <= rangeSq) {
-        const killed = enemy.takeDamage(damage);
-        this.onMeleeHit?.(enemy, damage);
-
-        // Apply small knockback away from player
-        if (distSq > 0) {
-          const dist = Math.sqrt(distSq);
-          const nx = dx / dist;
-          const ny = dy / dist;
-          enemy.x = clamp(
-            enemy.x + nx * this.KNOCKBACK_FORCE,
-            8,
-            ARENA_WIDTH - 8
-          );
-          enemy.y = clamp(
-            enemy.y + ny * this.KNOCKBACK_FORCE,
-            8,
-            ARENA_HEIGHT - 8
-          );
-        }
-
-        if (killed) {
-          this.onEnemyKilled?.(enemy);
+      for (const enemy of this.enemies) {
+        if (!enemy.active || this.hitCooldowns.has(enemy)) continue;
+        const dx = enemy.x - kx;
+        const dy = enemy.y - ky;
+        if (dx * dx + dy * dy <= HIT_R) {
+          const killed = enemy.takeDamage(damage);
+          this.onMeleeHit?.(enemy, damage);
+          this.hitCooldowns.set(enemy, this.HIT_COOLDOWN);
+          if (killed) this.onEnemyKilled?.(enemy);
         }
       }
     }
   }
 
-  private drawAura(): void {
-    this.auraGraphics.clear();
+  private drawKnives(): void {
+    this.gfx.clear();
+    const radius = this.data.range;
+    const count = this.knifeCount;
+    const isSoulEater = this.data.id === 'soul_eater';
 
-    const pulse = Math.sin(this.pulseTime) * 0.12 + 0.88;
-    const radius = this.data.range * pulse;
-    const alpha = 0.22 + Math.sin(this.pulseTime) * 0.08;
+    // Yörünge çemberi (hafif)
+    this.gfx.lineStyle(1, isSoulEater ? 0xaa44ff : 0x4488ff, 0.18);
+    this.gfx.strokeCircle(this.owner.x, this.owner.y, radius);
 
-    // Dış parlaklık halkası
-    this.auraGraphics.fillStyle(0x44ff22, alpha * 0.3);
-    this.auraGraphics.fillCircle(this.owner.x, this.owner.y, radius * 1.1);
+    for (let k = 0; k < count; k++) {
+      const angle = this.orbitAngle + (k / count) * Math.PI * 2;
+      const kx = this.owner.x + Math.cos(angle) * radius;
+      const ky = this.owner.y + Math.sin(angle) * radius;
 
-    // Ana dolu daire
-    this.auraGraphics.fillStyle(0x66ff33, alpha);
-    this.auraGraphics.fillCircle(this.owner.x, this.owner.y, radius);
+      // Glow
+      const glowColor = isSoulEater ? 0xaa44ff : 0x4488ff;
+      this.gfx.fillStyle(glowColor, 0.28);
+      this.gfx.fillCircle(kx, ky, 12);
 
-    // Dış çizgi (parlak)
-    this.auraGraphics.lineStyle(3, 0xaaff44, alpha + 0.4);
-    this.auraGraphics.strokeCircle(this.owner.x, this.owner.y, radius);
+      // Bıçak gövdesi — yörüngeye dik yönde
+      const knifeAngle = angle + Math.PI / 2;
+      const cos = Math.cos(knifeAngle);
+      const sin = Math.sin(knifeAngle);
+      const len = 14;
 
-    // İç çizgi
-    this.auraGraphics.lineStyle(1.5, 0xffffff, alpha * 0.5);
-    this.auraGraphics.strokeCircle(this.owner.x, this.owner.y, radius * 0.55);
+      // Dış kenar (daha koyu)
+      this.gfx.lineStyle(4, isSoulEater ? 0xcc66ff : 0x88ccff, 0.55);
+      this.gfx.beginPath();
+      this.gfx.moveTo(kx + cos * len, ky + sin * len);
+      this.gfx.lineTo(kx - cos * len, ky - sin * len);
+      this.gfx.strokePath();
 
-    // Alev parçacıkları (rotate eden noktalar)
-    const flameCount = 6;
-    for (let i = 0; i < flameCount; i++) {
-      const angle = this.pulseTime * 1.5 + (i / flameCount) * Math.PI * 2;
-      const fr = radius * (0.7 + Math.sin(this.pulseTime * 3 + i) * 0.2);
-      const fx = this.owner.x + Math.cos(angle) * fr;
-      const fy = this.owner.y + Math.sin(angle) * fr;
-      const fa = 0.5 + Math.sin(this.pulseTime * 4 + i) * 0.3;
-      this.auraGraphics.fillStyle(0xccff44, fa);
-      this.auraGraphics.fillCircle(fx, fy, 3 + Math.sin(this.pulseTime * 5 + i) * 1.5);
+      // İç kenar (parlak)
+      this.gfx.lineStyle(2, isSoulEater ? 0xee88ff : 0xddeeff, 1);
+      this.gfx.beginPath();
+      this.gfx.moveTo(kx + cos * len, ky + sin * len);
+      this.gfx.lineTo(kx - cos * len, ky - sin * len);
+      this.gfx.strokePath();
+
+      // Merkez parıltı noktası
+      this.gfx.fillStyle(isSoulEater ? 0xffccff : 0xffffff, 0.9);
+      this.gfx.fillCircle(kx, ky, 2.5);
     }
   }
 
   protected applyLevelUpBonus(): void {
     super.applyLevelUpBonus();
-    // Garlic also grows in range on level up
-    this.data.range += 10;
+    this.data.range += 8;
   }
 }

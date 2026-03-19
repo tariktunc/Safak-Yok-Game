@@ -69,7 +69,7 @@ export interface CharacterData {
   startingWeapon: string;
   baseStats: Stats;
   spriteKey: string;
-  bossRivalId: string;
+  bossRivalId?: string;
 }
 
 export interface SaveData {

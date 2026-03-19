@@ -75,6 +75,10 @@ export class HUD {
   private waveProgressBg!: Phaser.GameObjects.Rectangle;
   private waveProgressFill!: Phaser.GameObjects.Rectangle;
 
+  // FPS counter
+  private fpsText!: Phaser.GameObjects.Text;
+  private showFps: boolean = false;
+
   // Low HP overlay
   private lowHpOverlay!: Phaser.GameObjects.Rectangle;
   private lowHpPulseTime: number = 0;
@@ -82,13 +86,14 @@ export class HUD {
   private barWidth = 120;
   private barHeight = 10;
 
-  constructor(scene: Phaser.Scene, player: Player, xpSystem: XPSystem, waveManager: WaveManager, weapons: WeaponBase[], enemies: Enemy[]) {
+  constructor(scene: Phaser.Scene, player: Player, xpSystem: XPSystem, waveManager: WaveManager, weapons: WeaponBase[], enemies: Enemy[], showFps: boolean = false) {
     this.scene = scene;
     this.player = player;
     this.enemies = enemies;
     this.xpSystem = xpSystem;
     this.waveManager = waveManager;
     this.weapons = weapons;
+    this.showFps = showFps;
 
     this.create();
   }
@@ -189,6 +194,11 @@ export class HUD {
 
     // Boss off-screen arrow
     this.bossArrowGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(206);
+
+    // FPS counter (sol alt köşe, weapon slotların üstünde)
+    this.fpsText = this.scene.add.text(10, GAME_HEIGHT - 54, '', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#44ff44'
+    }).setScrollFactor(0).setDepth(202).setVisible(this.showFps);
 
     // E4: Weapon slot graphics
     this.weaponSlotGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(200);
@@ -333,17 +343,20 @@ export class HUD {
       this.lowHpOverlay.setAlpha(0);
     }
 
-    // Boss HP bar
-    const boss = this.enemies.find(e => e.active && e.enemyData?.id === 'boss_necromancer');
+    // Boss HP bar — herhangi bir aktif boss için göster
+    const boss = this.enemies.find(e => e.active && e.enemyData?.isBoss === true);
     if (boss) {
       const bossHpPct = Math.max(0, boss.maxHpValue > 0 ? boss.currentHp / boss.maxHpValue : 1);
       const bossBarW = 300;
       this.bossBarBg.setVisible(true);
       this.bossBarFill.setVisible(true);
-      this.bossBarLabel.setText(`⚠ BÜYÜCÜ  ${Math.ceil(boss.currentHp)} / ${boss.maxHpValue} ⚠`);
+      this.bossBarLabel.setText(`⚠ ${boss.enemyData.name.toUpperCase()}  ${Math.ceil(boss.currentHp)} / ${boss.maxHpValue} ⚠`);
       this.bossBarLabel.setVisible(true);
       this.bossBarName.setVisible(false);
       this.bossBarFill.width = bossBarW * bossHpPct;
+      // HP'ye göre renk: yeşil → sarı → kırmızı
+      const bossColor = bossHpPct > 0.5 ? 0xff00aa : bossHpPct > 0.25 ? 0xff6600 : 0xff2222;
+      this.bossBarFill.setFillStyle(bossColor);
     } else {
       this.bossBarBg.setVisible(false);
       this.bossBarFill.setVisible(false);
@@ -351,7 +364,7 @@ export class HUD {
       this.bossBarName.setVisible(false);
     }
 
-    // Off-screen boss arrow
+    // Off-screen boss arrow (aynı boss referansını kullan)
     this.bossArrowGraphics.clear();
     if (boss) {
       const cam = this.scene.cameras.main;
@@ -395,6 +408,12 @@ export class HUD {
       }
     }
 
+    // FPS
+    if (this.showFps) {
+      const fps = Math.round((this.scene.game.loop as any).actualFps ?? this.scene.game.loop.delta > 0 ? 1000 / this.scene.game.loop.delta : 60);
+      this.fpsText.setText(`FPS: ${fps}`);
+    }
+
     // E4: Weapon slots
     if (this.lastWeaponCount !== this.weapons.length) {
       this.rebuildWeaponSlots();
@@ -432,6 +451,7 @@ export class HUD {
     this.bossBarLabel.destroy();
     this.bossBarName.destroy();
     this.bossArrowGraphics.destroy();
+    this.fpsText.destroy();
     this.weaponSlotGraphics.destroy();
     for (const t of this.weaponSlotTexts) t.destroy();
     for (const t of this.weaponSlotLevelTexts) t.destroy();

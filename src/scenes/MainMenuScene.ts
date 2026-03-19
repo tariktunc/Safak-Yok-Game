@@ -140,33 +140,28 @@ export class MainMenuScene extends Phaser.Scene {
     });
     settingsBtnBg.on('pointerdown', () => this.scene.start('SettingsScene'));
 
-    // Controls info (sadece devam kaydı yoksa göster — alan kısıtlı)
-    if (!hasRun) {
-      this.add.text(GAME_WIDTH / 2, 472, 'WASD / Ok Tuşları ile Hareket', {
-        fontSize: '14px', fontFamily: 'monospace', color: '#666666'
-      }).setOrigin(0.5, 0.5);
-      this.add.text(GAME_WIDTH / 2, 496, 'ENTER veya BOŞLUK ile başlat', {
-        fontSize: '14px', fontFamily: 'monospace', color: '#666666'
-      }).setOrigin(0.5, 0.5);
-    }
+    // Kontrol ipucu — ayarlar butonunun hemen altına sabit konumlandırılmış
+    this.add.text(GAME_WIDTH / 2, settingsBtnY + 38, 'WASD · SPACE Dash · ESC Duraklat', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#444455'
+    }).setOrigin(0.5, 0.5);
 
     // Keyboard start
     this.input.keyboard?.once('keydown-ENTER', startGame);
     this.input.keyboard?.once('keydown-SPACE', startGame);
 
-    // Task 25: Display high score and total kills from save data
+    // Alt istatistikler — ekranın en altına sabit
     const saveData = saveManager.saveData;
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 75, `En Yüksek Skor: ${saveData.highScore}`, {
-      fontSize: '14px', fontFamily: 'monospace', color: '#888888'
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 62, `En Yüksek Skor: ${saveData.highScore}`, {
+      fontSize: '13px', fontFamily: 'monospace', color: '#888888'
     }).setOrigin(0.5, 0.5);
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 54, `Toplam Öldürme: ${saveData.totalKills}   Toplam Oyun: ${saveData.totalRuns}`, {
-      fontSize: '13px', fontFamily: 'monospace', color: '#666666'
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 44, `Toplam Öldürme: ${saveData.totalKills}   Toplam Oyun: ${saveData.totalRuns}`, {
+      fontSize: '12px', fontFamily: 'monospace', color: '#666666'
     }).setOrigin(0.5, 0.5);
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 33, `Banka Altını: ${saveData.gold}`, {
-      fontSize: '13px', fontFamily: 'monospace', color: '#aa8800'
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 26, `Banka Altını: ${saveData.gold}`, {
+      fontSize: '12px', fontFamily: 'monospace', color: '#aa8800'
     }).setOrigin(0.5, 0.5);
 
     // Studio label

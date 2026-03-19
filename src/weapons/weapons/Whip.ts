@@ -77,6 +77,12 @@ export class Whip extends WeaponBase {
           const killed = enemy.takeDamage(damage);
           this.onMeleeHit?.(enemy, damage);
 
+          // KANLI YIRTIK evrimi: her vuruşta %30 hasar kadar can çal
+          if (this.data.id === 'bloody_tear') {
+            const heal = Math.ceil(damage * 0.30);
+            this.owner.currentHp = Math.min(this.owner.currentHp + heal, this.owner.stats.maxHp);
+          }
+
           // Knockback away from player
           if (dist > 0) {
             const nx = dx / dist;
@@ -98,7 +104,11 @@ export class Whip extends WeaponBase {
 
   private drawWhipSlash(range: number, facingRad: number, arcSpread: number): void {
     this.whipGraphics.clear();
-    this.whipGraphics.lineStyle(3, 0xff6600, 0.8);
+    const isBloodyTear = this.data.id === 'bloody_tear';
+    const mainColor = isBloodyTear ? 0xff1144 : 0xff6600;
+    const innerColor = isBloodyTear ? 0xff6688 : 0xffaa33;
+
+    this.whipGraphics.lineStyle(isBloodyTear ? 4 : 3, mainColor, 0.9);
 
     const startAngle = facingRad - arcSpread;
     const endAngle = facingRad + arcSpread;
@@ -108,7 +118,7 @@ export class Whip extends WeaponBase {
     this.whipGraphics.strokePath();
 
     // Inner arc
-    this.whipGraphics.lineStyle(2, 0xffaa33, 0.5);
+    this.whipGraphics.lineStyle(2, innerColor, 0.6);
     this.whipGraphics.beginPath();
     this.whipGraphics.arc(this.owner.x, this.owner.y, range * 0.6, startAngle, endAngle, false);
     this.whipGraphics.strokePath();

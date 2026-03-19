@@ -72,6 +72,7 @@ export class ShopScene extends Phaser.Scene {
         this.clearCards();
         this.displayOfferings(result.offerings);
         rerollText.setText(`Yeniden Çevir (${this.shopManager.getRerollCost()}a)`);
+        this.playShopSound('playReroll');
       }
     });
 
@@ -161,6 +162,7 @@ export class ShopScene extends Phaser.Scene {
           buyText.setText('SATILDI');
           buyText.setColor('#666666');
           bg.disableInteractive();
+          this.playShopSound('playPurchase');
           return;
         }
 
@@ -173,6 +175,7 @@ export class ShopScene extends Phaser.Scene {
           buyText.setText('İÇİLDİ ♥');
           buyText.setColor('#ff6666');
           bg.disableInteractive();
+          this.playShopSound('playPurchase');
           return;
         }
         const stats = item.statModifiers;
@@ -193,8 +196,15 @@ export class ShopScene extends Phaser.Scene {
         buyText.setText('SATILDI');
         buyText.setColor('#666666');
         bg.disableInteractive();
+        this.playShopSound('playPurchase');
       });
     });
+  }
+
+  /** GameScene'in AudioManager'ını kullanarak ses çal */
+  private playShopSound(method: 'playPurchase' | 'playReroll'): void {
+    const gameScene = this.scene.get('GameScene') as any;
+    gameScene?.audioManager?.[method]?.();
   }
 
   private clearCards(): void {

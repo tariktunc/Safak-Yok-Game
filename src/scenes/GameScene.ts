@@ -12,7 +12,7 @@ import { CollisionSystem } from '../systems/CollisionSystem';
 import { XPSystem } from '../systems/XPSystem';
 import { Knife } from '../weapons/weapons/Knife';
 import { Garlic } from '../weapons/weapons/Garlic';
-import { Whip } from '../weapons/weapons/Whip';
+import { Sword } from '../weapons/weapons/Sword';
 import { HolyWater } from '../weapons/weapons/HolyWater';
 import { CrossBoomerang } from '../weapons/weapons/CrossBoomerang';
 import { WeaponBase } from '../weapons/WeaponBase';
@@ -23,7 +23,7 @@ import { SaveManager } from '../systems/SaveManager';
 import { getEvolution } from '../weapons/WeaponEvolution';
 import { CharacterData, RunSaveData } from '../utils/types';
 import characters from '../data/characters.json';
-import { ARENA_WIDTH, ARENA_HEIGHT, GAME_WIDTH, GAME_HEIGHT, MAX_ENEMIES, MAX_PROJECTILES, MAX_XP_GEMS, MAX_GOLD_COINS } from '../utils/constants';
+import { ARENA_WIDTH, ARENA_HEIGHT, GAME_WIDTH, GAME_HEIGHT, MAX_ENEMIES, MAX_PROJECTILES, MAX_XP_GEMS, MAX_GOLD_COINS, IS_MOBILE } from '../utils/constants';
 
 export class GameScene extends Phaser.Scene {
   public player!: Player;
@@ -69,13 +69,20 @@ export class GameScene extends Phaser.Scene {
   // Kritik vuruş şansı (crit_up pasifi ile artar)
   private critChance: number = 0.15;
 
+  // Tarık Kan Öfkesi rage durumu
+  private tarikRageActive: boolean = false;
+
   // P3-1: Dash afterimage object pool
   private afterimagePool: Phaser.GameObjects.Sprite[] = [];
 
-  // Sezer karakter müziği
+  // Sezer boss müziği
   private sezerMusic: Phaser.Sound.BaseSound | null = null;
-  private sezerMusicTargetVol: number = 0;
   private readonly SEZER_MAX_VOLUME = 0.85;
+  private musicVolume: number = 1.0;
+
+  // Settings
+  private cameraShakeEnabled: boolean = true;
+  private showDamageNumbersEnabled: boolean = true;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -106,6 +113,7 @@ export class GameScene extends Phaser.Scene {
 
     // BUG-3: Geçiş kilidini sıfırla
     this.isTransitioning = false;
+    this.tarikRageActive = false;
 
     // Draw arena background
     this.createArenaBackground();
@@ -126,7 +134,7 @@ export class GameScene extends Phaser.Scene {
     // Create player at center with character-specific sprite
     const spriteKey = charData?.spriteKey ?? 'player-tarik';
     this.player = new Player(this, ARENA_WIDTH / 2, ARENA_HEIGHT / 2, spriteKey, characterId);
-    this.player.setScale(1); // Player 64px, enemy 48px — player 1 tık büyük
+    this.player.setScale(1.75); // Player 112px, enemy 48px
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
     // Apply character stats
@@ -205,15 +213,9 @@ export class GameScene extends Phaser.Scene {
     // Wave Manager
     this.waveManager = new WaveManager(this, this.enemyPool, enemyHpMult, enemyDamageMult);
     this.waveManager.onWaveComplete = () => this.onWaveComplete();
-    // Rakip boss ID'sini aktar (Tarık seçtiyse Mumin boss, tersi de geçerli)
-    if (charData?.bossRivalId) {
-      this.waveManager.setRivalBossId(charData.bossRivalId);
-    }
-    this.waveManager.onRivalBossSpawn = (bossName) => this.showRivalBossAnnouncement(bossName);
-    // Sezer modu: spawn kademeli azalır
-    if (this.characterId === 'sezer') {
-      this.waveManager.setSezerMode(true);
-    }
+    this.waveManager.onWaveFail = () => this.onWaveFail();
+    this.waveManager.onBossSezerSpawn = () => this.onBossSezerSpawn();
+    this.waveManager.onSpawnPreview = (positions) => this.showSpawnWarnings(positions);
     // Devam kayıdı varsa state'i geri yükle
     let startWave = 1;
     if (data?.resumeRun) {
@@ -297,30 +299,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     // HUD (E2: pass enemies array for enemy count display)
-    this.hud = new HUD(this, this.player, this.xpSystem, this.waveManager, this.weapons, this.allEnemies);
+    this.hud = new HUD(this, this.player, this.xpSystem, this.waveManager, this.weapons, this.allEnemies, diffSave.showFps);
 
     // Minimap
     this.minimap = new MinimapUI(this, this.player, this.allEnemies);
 
     // Task 21 & 22: Audio (kaydedilmiş volume ile başlat)
     const volSave = new SaveManager();
-    this.audioManager = new AudioManager(this, volSave.musicVolume);
-
-    if (this.characterId === 'sezer' && this.cache.audio.has('sezer-theme')) {
-      // Sezer'e özel müzik: sessiz başla, tween ile yükselt
-      this.sezerMusic = this.sound.add('sezer-theme', { loop: true, volume: 0 });
-      this.sezerMusicTargetVol = this.SEZER_MAX_VOLUME;
-      this.sezerMusic.play();
-      // 3 saniyede yavaşça maksimum sese çık
-      this.tweens.add({
-        targets: this.sezerMusic,
-        volume: this.SEZER_MAX_VOLUME,
-        duration: 3000,
-        ease: 'Linear'
-      });
-    } else {
-      this.audioManager.playBGM();
-    }
+    this.musicVolume = volSave.musicVolume;
+    this.cameraShakeEnabled = volSave.cameraShake;
+    this.showDamageNumbersEnabled = volSave.showDamageNumbers;
+    this.audioManager = new AudioManager(this, this.musicVolume, volSave.sfxVolume);
+    this.audioManager.playBGM();
 
     // BGM'i scene kapanınca durdur (üst üste binmeyi önle)
     this.events.once('shutdown', () => {
@@ -330,13 +320,14 @@ export class GameScene extends Phaser.Scene {
         this.sezerMusic.destroy();
         this.sezerMusic = null;
       }
+      this.inputManager?.destroyTouchControls();
     }, this);
 
     // Task 25: SaveManager
     this.saveManager = new SaveManager();
 
-    // P3-1: Afterimage pool — player oluşturulduktan sonra doldur
-    for (let i = 0; i < 20; i++) {
+    // P3-1: Afterimage pool — mobilde küçük pool
+    for (let i = 0; i < (IS_MOBILE ? 5 : 20); i++) {
       const s = this.add.sprite(0, 0, this.player.texture.key, 0);
       s.setActive(false).setVisible(false).setDepth(4);
       this.afterimagePool.push(s);
@@ -365,10 +356,10 @@ export class GameScene extends Phaser.Scene {
         this.player.weaponIds.push('garlic');
         break;
       }
-      case 'whip': {
-        const whip = new Whip(this, this.player, this.allEnemies);
-        this.weapons.push(whip);
-        this.player.weaponIds.push('whip');
+      case 'sword': {
+        const sword = new Sword(this, this.player, this.allEnemies);
+        this.weapons.push(sword);
+        this.player.weaponIds.push('sword');
         break;
       }
       case 'holy_water': {
@@ -448,10 +439,24 @@ export class GameScene extends Phaser.Scene {
     this.collisionSystem.onEnemyKilled = (enemy) => {
       this.player.kills++;
       this.waveKills++;
-      const isBossKill = enemy.enemyData?.id === 'boss_necromancer';
-      this.cameras.main.shake(isBossKill ? 300 : 30, isBossKill ? 0.012 : 0.002);
+      const isBossKill = enemy.enemyData?.isBoss === true;
+      this.shake(isBossKill ? 300 : 30, isBossKill ? 0.012 : 0.002);
       if (isBossKill) {
         this.audioManager.playBossKill();
+        // boss_sezer öldüğünde: müziği kapat, BGM'e geri dön
+        if (enemy.enemyData?.id === 'boss_sezer' && this.sezerMusic) {
+          this.tweens.add({
+            targets: this.sezerMusic,
+            volume: 0,
+            duration: 1500,
+            onComplete: () => {
+              this.sezerMusic?.stop();
+              this.sezerMusic?.destroy();
+              this.sezerMusic = null;
+              this.audioManager.playBGM();
+            }
+          });
+        }
       } else {
         this.audioManager.playKill();
       }
@@ -485,17 +490,27 @@ export class GameScene extends Phaser.Scene {
       }
 
       // --- Karakter pasifleri (öldürme) ---
-      // Tarık: Savaşçı Ruhu — her 20 öldürmede 5 Can
-      if (this.characterId === 'tarik' && this.player.kills % 20 === 0) {
-        this.player.currentHp = Math.min(this.player.currentHp + 5, this.player.stats.maxHp);
-        this.showHealText(this.player.x, this.player.y, 5);
-        this.showPassiveTrigger('SAVAŞÇI RUHU!', '#44ff88');
-      }
-      // Mumin: Kan Emici — %25 şansla 2 Can
+      // Mumin: Tetik Parmaklı — %25 şansla en yakın düşmana ekstra ok
       if (this.characterId === 'mumin' && Math.random() < 0.25) {
-        this.player.currentHp = Math.min(this.player.currentHp + 2, this.player.stats.maxHp);
-        this.showHealText(this.player.x, this.player.y, 2);
-        this.showPassiveTrigger('KAN EMİCİ!', '#ff4466');
+        let bonusTarget: Enemy | null = null;
+        let nearestDist = Infinity;
+        for (const e of this.allEnemies) {
+          if (!e.active) continue;
+          const dx = e.x - this.player.x;
+          const dy = e.y - this.player.y;
+          const d = dx * dx + dy * dy;
+          if (d < nearestDist) { nearestDist = d; bonusTarget = e; }
+        }
+        if (bonusTarget) {
+          const proj = this.projectilePool.get();
+          if (proj) {
+            const ang = Math.atan2(bonusTarget.y - this.player.y, bonusTarget.x - this.player.x);
+            proj.fire(this.player.x, this.player.y, ang, 520, this.player.stats.damage * 14, 2, 'knife', 0);
+            proj.setScale(3.5, 0.4);
+            proj.setTint(0x44aaff);
+          }
+          this.showPassiveTrigger('TETİK PARMAKLI!', '#44aaff');
+        }
       }
 
       // Death shrink+fade animation, then release to pool
@@ -516,12 +531,12 @@ export class GameScene extends Phaser.Scene {
     this.collisionSystem.onPlayerHit = (damage) => {
       this.waveDamageTaken += damage;
       this.showDamageNumber(this.player.x, this.player.y, damage, true);
-      this.cameras.main.shake(100, 0.008);
+      this.shake(100, 0.008);
       this.audioManager.playPlayerHit();
 
-      // Kahraman: Demir Cilt — hasar alınca %30 şansla +1 Zırh (maks 5)
+      // Kahraman: Demir Cilt — hasar alınca %30 şansla +1 Zırh (maks 6)
       if (this.characterId === 'orjinal' && Math.random() < 0.30) {
-        if (this.player.stats.armor < 5) {
+        if (this.player.stats.armor < 6) {
           this.player.stats.armor += 1;
           this.showPassiveTrigger('DEMİR CİLT!', '#aabbff');
         }
@@ -582,9 +597,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showDamageNumber(x: number, y: number, amount: number, isCrit: boolean = false): void {
+    if (!this.showDamageNumbersEnabled) return;
     const dmgNum = this.damageNumbers.find(d => !d.active);
     if (dmgNum) {
       dmgNum.show(x, y, amount, isCrit);
+    }
+  }
+
+  /** Kamera sarsıntısı — ayardan kapalıysa atlar */
+  private shake(duration: number, intensity: number): void {
+    if (this.cameraShakeEnabled) {
+      this.cameras.main.shake(duration, intensity);
     }
   }
 
@@ -604,7 +627,24 @@ export class GameScene extends Phaser.Scene {
     // 2. Player movement
     this.player.move(this.inputManager.moveX, this.inputManager.moveY, delta);
 
-    // 2b. Dash
+    // 2b. Tarık Kan Öfkesi rage sistemi
+    if (this.characterId === 'tarik') {
+      const hpRatio = this.player.currentHp / this.player.stats.maxHp;
+      if (hpRatio < 0.5 && !this.tarikRageActive) {
+        this.tarikRageActive = true;
+        this.player.stats.damage *= 1.4;
+        this.player.stats.speed += 30;
+        this.player.setTint(0xff3300);
+        this.showPassiveTrigger('KAN ÖFKESİ!', '#ff2200');
+      } else if (hpRatio >= 0.5 && this.tarikRageActive) {
+        this.tarikRageActive = false;
+        this.player.stats.damage /= 1.4;
+        this.player.stats.speed -= 30;
+        this.player.clearTint();
+      }
+    }
+
+    // 2c. Dash
     if (this.inputManager.dashPressed && this.player.canDash) {
       let dashDirX = this.inputManager.moveX;
       let dashDirY = this.inputManager.moveY;
@@ -616,7 +656,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.player.dash(dashDirX, dashDirY);
-      this.cameras.main.shake(80, 0.003);
+      this.shake(80, 0.003);
       this.audioManager.playDash();
 
       // Dash afterimage trail (P3-1: object pool kullanıyor)
@@ -680,8 +720,8 @@ export class GameScene extends Phaser.Scene {
     for (const proj of this.allProjectiles) {
       if (proj.active) {
         proj.update(time, delta);
-        // Projectile trail effect
-        if (proj.trailCooldown <= 0) {
+        // Mermi trail efekti — mobilde atla (performans)
+        if (!IS_MOBILE && proj.trailCooldown <= 0) {
           proj.trailCooldown = 35;
           this.spawnProjectileTrail(proj.x, proj.y, proj.rotation);
         }
@@ -727,14 +767,13 @@ export class GameScene extends Phaser.Scene {
     // 11. Minimap
     this.minimap.update();
 
-    // 12. Sezer müzik: HP azaldıkça ses düşer
+    // 12. Sezer boss müziği: HP azaldıkça ses düşer, oyun ses ayarına göre scale
     if (this.sezerMusic && (this.sezerMusic as Phaser.Sound.WebAudioSound).isPlaying) {
       const hpRatio = this.player.currentHp / this.player.stats.maxHp;
-      // %100 HP → SEZER_MAX_VOLUME, %0 HP → SEZER_MAX_VOLUME * 0.25
-      const targetVol = this.SEZER_MAX_VOLUME * (0.25 + hpRatio * 0.75);
+      // %100 HP → max volume, %0 HP → max volume * 0.25
+      const targetVol = this.SEZER_MAX_VOLUME * this.musicVolume * (0.25 + hpRatio * 0.75);
       const music = this.sezerMusic as Phaser.Sound.WebAudioSound;
       const currentVol = music.volume;
-      // Smooth: lerp %5 per frame
       const newVol = currentVol + (targetVol - currentVol) * 0.05;
       music.setVolume(Math.max(0, newVol));
     }
@@ -776,6 +815,11 @@ export class GameScene extends Phaser.Scene {
           weapon.data.damage *= 2;
           weapon.data.id = evolution.resultId;
           weapon.data.name = evolution.resultName;
+
+          // Evrime özel mekanik değişiklikler
+          if (evolution.resultId === 'soul_eater') {
+            weapon.data.range += 100; // Ruh Yiyen: çok daha geniş aura
+          }
 
           // Update weaponIds
           const idx = this.player.weaponIds.indexOf(evolution.weaponId);
@@ -1267,7 +1311,7 @@ export class GameScene extends Phaser.Scene {
         if (t >= 1) { this.events.off('update', tick); ring.destroy(); }
       };
       this.events.on('update', tick);
-      this.cameras.main.shake(400, 0.015);
+      this.shake(400, 0.015);
     }
   }
 
@@ -1401,32 +1445,35 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Rakip boss sahneye çıktığında dramatik duyuru göster */
-  private showRivalBossAnnouncement(bossName: string): void {
-    // Ekranı kırmızıya çevir
-    const flash = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x330000, 0)
-      .setScrollFactor(0).setDepth(290);
-    this.tweens.add({
-      targets: flash, alpha: 0.5, duration: 200, yoyo: true, repeat: 2,
-      onComplete: () => flash.destroy()
-    });
+  /** Boss Sezer sahneye çıktığında: mevcut düşmanları temizle, müzik başlat, duyuru göster */
+  private onBossSezerSpawn(): void {
+    // Mevcut tüm normal düşmanları temizle (sadece boss vs player)
+    for (const enemy of this.allEnemies) {
+      if (enemy.active && !enemy.enemyData?.isBoss) {
+        this.tweens.killTweensOf(enemy);
+        enemy.die();
+        this.enemyPool.release(enemy);
+      }
+    }
 
     // Kamera sarsıntısı
-    this.cameras.main.shake(600, 0.015);
+    this.shake(500, 0.012);
 
-    // Üst metin: "RAKIP GELİYOR!"
-    const topText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40, 'RAKİBİN GELİYOR!', {
-      fontSize: '28px', fontFamily: 'monospace', color: '#ff4444', fontStyle: 'bold'
+    // SEZER GELİYOR duyurusu
+    const flash = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x330000, 0)
+      .setScrollFactor(0).setDepth(290);
+    this.tweens.add({ targets: flash, alpha: 0.5, duration: 200, yoyo: true, repeat: 2, onComplete: () => flash.destroy() });
+
+    const topText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 44, '⚠ BOSS GELİYOR ⚠', {
+      fontSize: '26px', fontFamily: 'monospace', color: '#ff4444', fontStyle: 'bold'
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(300).setAlpha(0);
 
-    // Ana metin: boss adı
-    const nameText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 5, bossName.toUpperCase(), {
-      fontSize: '52px', fontFamily: 'monospace', color: '#ffffff', fontStyle: 'bold'
+    const nameText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 8, 'S E Z E R', {
+      fontSize: '58px', fontFamily: 'monospace', color: '#ff0066', fontStyle: 'bold'
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(300).setAlpha(0);
 
-    // Alt metin
-    const subText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55, 'KARŞINDA!', {
-      fontSize: '22px', fontFamily: 'monospace', color: '#ff8800', fontStyle: 'bold'
+    const subText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 58, '30 saniyede kes!', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#ffaa00'
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(300).setAlpha(0);
 
     const elements = [topText, nameText, subText];
@@ -1434,9 +1481,68 @@ export class GameScene extends Phaser.Scene {
       targets: elements, alpha: 1, duration: 250, ease: 'Power2',
       onComplete: () => {
         this.time.delayedCall(1800, () => {
-          this.tweens.add({
-            targets: elements, alpha: 0, duration: 400,
-            onComplete: () => elements.forEach(e => e.destroy())
+          this.tweens.add({ targets: elements, alpha: 0, duration: 400, onComplete: () => elements.forEach(e => e.destroy()) });
+        });
+      }
+    });
+
+    // BGM'i durdur, Sezer temasını başlat
+    if (!this.cache.audio.has('sezer-theme')) return;
+    this.audioManager.stopBGM();
+    if (this.sezerMusic) { this.sezerMusic.stop(); this.sezerMusic.destroy(); }
+    const maxVol = this.SEZER_MAX_VOLUME * this.musicVolume;
+    this.sezerMusic = this.sound.add('sezer-theme', { loop: true, volume: 0 });
+    this.sezerMusic.play();
+    this.tweens.add({ targets: this.sezerMusic, volume: maxVol, duration: 3000, ease: 'Linear' });
+  }
+
+  /** Dalga süresi doldu ama boss öldürülemedi */
+  private onWaveFail(): void {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    // Müziği durdur
+    this.audioManager?.stopBGM();
+    if (this.sezerMusic) {
+      this.sezerMusic.stop();
+      this.sezerMusic.destroy();
+      this.sezerMusic = null;
+    }
+
+    // "DALGA BAŞARISIZ!" ekranı
+    const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0)
+      .setScrollFactor(0).setDepth(500);
+
+    const failText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, 'DALGA BAŞARISIZ!', {
+      fontSize: '46px', fontFamily: 'monospace', color: '#ff2222', fontStyle: 'bold'
+    }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(501).setAlpha(0);
+
+    const subText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 28, 'Sezer kesilemedin...', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#ff8888'
+    }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(501).setAlpha(0);
+
+    this.shake(600, 0.018);
+
+    this.tweens.add({
+      targets: [overlay, failText, subText], alpha: 1, duration: 400, ease: 'Power2',
+      onComplete: () => {
+        this.time.delayedCall(2000, () => {
+          // Game over
+          this.saveManager.clearRun();
+          const score = this.player.kills * 10 + this.waveManager.wave * 100;
+          const previousHighScore = this.saveManager.saveData.highScore;
+          this.saveManager.updateAfterRun(this.player.kills, score);
+          this.saveManager.addGold(this.player.gold);
+          this.scene.start('GameOverScene', {
+            kills: this.player.kills,
+            wave: this.waveManager.wave,
+            gold: this.player.gold,
+            score,
+            victory: false,
+            highScore: this.saveManager.saveData.highScore,
+            previousHighScore,
+            characterId: this.characterId,
+            waveFailed: true
           });
         });
       }
@@ -1679,7 +1785,7 @@ export class GameScene extends Phaser.Scene {
     this.events.on('update', ringTick);
 
     // Kamera sarsıntısı
-    this.cameras.main.shake(500, 0.02);
+    this.shake(500, 0.02);
 
     // Ekran kırmızıya soluklan
     const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xff0000, 0)

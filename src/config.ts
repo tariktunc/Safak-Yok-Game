@@ -13,7 +13,8 @@ import { GameOverScene } from './scenes/GameOverScene';
 import { SettingsScene } from './scenes/SettingsScene';
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.WEBGL,
+  // AUTO: WebGL varsa kullan, yoksa Canvas'a düş (eski/uyumsuz telefonlar için)
+  type: Phaser.AUTO,
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   parent: 'game-container',
@@ -21,15 +22,18 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   roundPixels: true,
   antialias: false,
   backgroundColor: '#1a0a2e',
+  disableContextMenu: true,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    parent: 'game-container'
+    parent: 'game-container',
+    // Pencere boyutu değişince (adres çubuğu vs) otomatik yeniden ölçekle
+    expandParent: true
   },
   input: {
-    mouse: {
-      target: undefined // use canvas itself
-    }
+    mouse: { preventDefaultWheel: true },
+    touch: { capture: true },
+    activePointers: 4 // joystick + dash + pause + ekstra parmak
   },
   scene: [
     BootScene,
@@ -45,9 +49,11 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   ],
   fps: {
     target: 60,
-    forceSetTimeOut: false
+    forceSetTimeOut: false,
+    smoothStep: true   // frame zamanı yumuşatma — mobilde titreme azaltır
   },
   render: {
-    batchSize: 4096
+    batchSize: 4096,
+    powerPreference: 'high-performance' // GPU tercih: yüksek performans modu
   }
 };

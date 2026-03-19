@@ -77,7 +77,9 @@ export class HolyWater extends WeaponBase {
 
     if (targetX === -1) return; // Menzilde düşman yok
 
-    const poolRadius = 60 + this.level * 5;
+    const isDivineGround = this.data.id === 'divine_ground';
+    // İLAHİ ZEMİN evrimi: 2x büyük havuz, 2x uzun süre
+    const poolRadius = (60 + this.level * 5) * (isDivineGround ? 2 : 1);
     const poolDamage = this.effectiveDamage;
     this.throwFlask(targetX, targetY, poolRadius, poolDamage);
   }
@@ -147,12 +149,13 @@ export class HolyWater extends WeaponBase {
     // Splash burst animasyonu
     this.showSplash(x, y, poolRadius);
 
+    const isDivineGround = this.data.id === 'divine_ground';
     // Havuzu ekle
     this.pools.push({
       x, y,
       radius: poolRadius,
       lifetime: 0,
-      maxLifetime: this.POOL_DURATION,
+      maxLifetime: isDivineGround ? this.POOL_DURATION * 2 : this.POOL_DURATION,
       damage: poolDamage,
       tickTimer: 0
     });
@@ -232,25 +235,27 @@ export class HolyWater extends WeaponBase {
 
   private drawPools(): void {
     this.poolGraphics.clear();
+    const isDivineGround = this.data.id === 'divine_ground';
+    const baseColor  = isDivineGround ? 0xffcc22 : 0x1a88ff;
+    const ringColor  = isDivineGround ? 0xffee88 : 0x66ccff;
+    const innerColor = isDivineGround ? 0xffee44 : 0x99ddff;
+    const rimColor   = isDivineGround ? 0xffaa00 : 0x3399ff;
+
     for (const pool of this.pools) {
       const progress = pool.lifetime / pool.maxLifetime;
       const alpha = 0.35 * (1 - progress);
       const pulse = 1 + Math.sin(pool.lifetime * 0.008) * 0.08;
 
-      // Zemin suyu efekti — elips (perspektif hissi)
-      this.poolGraphics.fillStyle(0x1a88ff, alpha * 0.7);
+      this.poolGraphics.fillStyle(baseColor, alpha * 0.7);
       this.poolGraphics.fillEllipse(pool.x, pool.y, pool.radius * 2 * pulse, pool.radius * 1.3 * pulse);
 
-      // Dış halka
-      this.poolGraphics.lineStyle(2, 0x66ccff, alpha + 0.2);
+      this.poolGraphics.lineStyle(2, ringColor, alpha + 0.2);
       this.poolGraphics.strokeEllipse(pool.x, pool.y, pool.radius * 2 * pulse, pool.radius * 1.3 * pulse);
 
-      // İç parlaklık
-      this.poolGraphics.fillStyle(0x99ddff, alpha * 0.4);
+      this.poolGraphics.fillStyle(innerColor, alpha * 0.4);
       this.poolGraphics.fillEllipse(pool.x, pool.y, pool.radius * pulse, pool.radius * 0.65 * pulse);
 
-      // Kalan süre göstergesi — dış çember solar
-      this.poolGraphics.lineStyle(1, 0x3399ff, alpha * 0.5);
+      this.poolGraphics.lineStyle(1, rimColor, alpha * 0.5);
       this.poolGraphics.strokeEllipse(pool.x, pool.y, pool.radius * 2.2, pool.radius * 1.45);
     }
   }

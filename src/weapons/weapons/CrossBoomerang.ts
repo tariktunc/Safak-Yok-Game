@@ -93,6 +93,27 @@ export class CrossBoomerang extends WeaponBase {
   }
 
   attack(): void {
+    // ÇAPRAZ FIRTINA evrimi: 4 yöne (diagonal) eşzamanlı ateş
+    if (this.data.id === 'cross_storm') {
+      const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+      for (const angle of angles) {
+        this.boomerangs.push({
+          x: this.owner.x,
+          y: this.owner.y,
+          vx: Math.cos(angle) * this.data.projectileSpeed,
+          vy: Math.sin(angle) * this.data.projectileSpeed,
+          speed: this.data.projectileSpeed,
+          damage: this.effectiveDamage,
+          lifetime: 0,
+          maxLifetime: 3000,
+          returning: false,
+          hitEnemies: new Set(),
+          rotation: 0
+        });
+      }
+      return;
+    }
+
     // Find nearest enemy — yoksa ateş etme
     let targetX = -1;
     let targetY = -1;
@@ -133,17 +154,18 @@ export class CrossBoomerang extends WeaponBase {
 
   private drawBoomerangs(): void {
     this.gfx.clear();
+    const isCrossStorm = this.data.id === 'cross_storm';
     for (const b of this.boomerangs) {
-      const size = 16;
+      const size = isCrossStorm ? 20 : 16;
       const cos = Math.cos(b.rotation);
       const sin = Math.sin(b.rotation);
 
       // Glow arkası
-      this.gfx.fillStyle(0xffff66, 0.25);
+      this.gfx.fillStyle(isCrossStorm ? 0xff8800 : 0xffff66, isCrossStorm ? 0.35 : 0.25);
       this.gfx.fillCircle(b.x, b.y, size + 4);
 
       // Haç yatay kol
-      this.gfx.lineStyle(4, 0xffffff, 1);
+      this.gfx.lineStyle(isCrossStorm ? 5 : 4, isCrossStorm ? 0xff6600 : 0xffffff, 1);
       this.gfx.beginPath();
       this.gfx.moveTo(b.x + cos * size, b.y + sin * size);
       this.gfx.lineTo(b.x - cos * size, b.y - sin * size);
@@ -156,8 +178,8 @@ export class CrossBoomerang extends WeaponBase {
       this.gfx.strokePath();
 
       // Merkez nokta
-      this.gfx.fillStyle(0xffee00, 1);
-      this.gfx.fillCircle(b.x, b.y, 4);
+      this.gfx.fillStyle(isCrossStorm ? 0xff4400 : 0xffee00, 1);
+      this.gfx.fillCircle(b.x, b.y, isCrossStorm ? 6 : 4);
     }
   }
 

@@ -103,6 +103,15 @@ export class PauseScene extends Phaser.Scene {
       });
     });
 
+    // Duraklat menüsü açıldığında müziği durdur
+    audioManager?.pauseBGM?.();
+
+    const doResume = () => {
+      audioManager?.resumeBGM?.();
+      this.scene.resume('GameScene');
+      this.scene.stop();
+    };
+
     // ─── Butonlar ────────────────────────────────────────────────────────────────
     const resumeText = this.add.text(GAME_WIDTH / 2, 415, '[ DEVAM ET ]', {
       fontSize: '18px', fontFamily: 'monospace', color: '#33ff33'
@@ -111,10 +120,7 @@ export class PauseScene extends Phaser.Scene {
 
     resumeText.on('pointerover', () => resumeText.setColor('#ffffff'));
     resumeText.on('pointerout', () => resumeText.setColor('#33ff33'));
-    resumeText.on('pointerdown', () => {
-      this.scene.resume('GameScene');
-      this.scene.stop();
-    });
+    resumeText.on('pointerdown', doResume);
 
     const quitText = this.add.text(GAME_WIDTH / 2, 460, '[ ANA MENÜ ]', {
       fontSize: '18px', fontFamily: 'monospace', color: '#ff3333'
@@ -124,16 +130,12 @@ export class PauseScene extends Phaser.Scene {
     quitText.on('pointerover', () => quitText.setColor('#ffffff'));
     quitText.on('pointerout', () => quitText.setColor('#ff3333'));
     quitText.on('pointerdown', () => {
-      // BUG-5: Ana Menü'ye çıkmadan önce BGM'i durdur
       audioManager?.stopBGM?.();
       this.scene.stop('GameScene');
       this.scene.start('MainMenuScene');
     });
 
     // ESC: geri dön / devam et
-    this.input.keyboard?.on('keydown-ESC', () => {
-      this.scene.resume('GameScene');
-      this.scene.stop();
-    });
+    this.input.keyboard?.on('keydown-ESC', doResume);
   }
 }

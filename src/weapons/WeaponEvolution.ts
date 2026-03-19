@@ -13,7 +13,7 @@ export const EVOLUTION_RECIPES: EvolutionRecipe[] = [
     resultName: 'Bin Kesik'
   },
   {
-    weaponId: 'whip',
+    weaponId: 'sword',
     requiresPassive: 'hollow_heart',
     resultId: 'bloody_tear',
     resultName: 'Kanlı Yırtık'
@@ -23,6 +23,18 @@ export const EVOLUTION_RECIPES: EvolutionRecipe[] = [
     requiresPassive: 'pummarola',
     resultId: 'soul_eater',
     resultName: 'Ruh Yiyen'
+  },
+  {
+    weaponId: 'holy_water',
+    requiresPassive: 'spellbinder',
+    resultId: 'divine_ground',
+    resultName: 'İlahi Zemin'
+  },
+  {
+    weaponId: 'cross_boomerang',
+    requiresPassive: 'spinach',
+    resultId: 'cross_storm',
+    resultName: 'Çapraz Fırtına'
   }
 ];
 

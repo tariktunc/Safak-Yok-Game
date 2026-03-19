@@ -9,11 +9,19 @@ export const ARENA_HEIGHT = 1800;
 // Spatial grid
 export const GRID_CELL_SIZE = 64;
 
-// Pool sizes
-export const MAX_ENEMIES = 500;
-export const MAX_PROJECTILES = 300;
-export const MAX_XP_GEMS = 200;
-export const MAX_GOLD_COINS = 200;
+// Platform detection — user agent + dokunmatik kapasite kontrolü
+// (iPadOS 13+ "Mac OS X" UA bildirir, bu yüzden touch event'e de bakıyoruz)
+export const IS_MOBILE = typeof navigator !== 'undefined' && (
+  /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+  navigator.maxTouchPoints > 0 ||
+  ('ontouchstart' in window)
+);
+
+// Pool sizes — mobilde düşürülmüş
+export const MAX_ENEMIES    = IS_MOBILE ? 80  : 500;
+export const MAX_PROJECTILES = IS_MOBILE ? 100 : 300;
+export const MAX_XP_GEMS    = IS_MOBILE ? 80  : 200;
+export const MAX_GOLD_COINS  = IS_MOBILE ? 60  : 200;
 
 // Player defaults
 export const PLAYER_SPEED = 160;

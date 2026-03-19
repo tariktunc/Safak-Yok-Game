@@ -60,66 +60,19 @@ const ENEMY_DATA: Record<string, EnemyData> = {
     goldValue: 5,
     spriteKey: 'enemies',
     isBoss: false
-  },
-  boss_necromancer: {
-    id: 'boss_necromancer',
-    name: 'Büyücü',
-    hp: 2000,
-    speed: 20,
-    damage: 25,
-    xpValue: 50,
-    goldValue: 80,
-    spriteKey: 'enemies',
-    isBoss: true
-  },
-  boss_mumin: {
-    id: 'boss_mumin',
-    name: 'Mumin',
-    hp: 3000,
-    speed: 55,
-    damage: 30,
-    xpValue: 80,
-    goldValue: 100,
-    spriteKey: 'enemies',
-    frame: 7,
-    isBoss: true
-  },
-  boss_tarik: {
-    id: 'boss_tarik',
-    name: 'Tarık',
-    hp: 3000,
-    speed: 50,
-    damage: 35,
-    xpValue: 80,
-    goldValue: 100,
-    spriteKey: 'enemies',
-    frame: 8,
-    isBoss: true
-  },
-  boss_sezer: {
-    id: 'boss_sezer',
-    name: 'Sezer',
-    hp: 1500,
-    speed: 70,
-    damage: 18,
-    xpValue: 30,
-    goldValue: 50,
-    spriteKey: 'enemies',
-    frame: 6,
-    isBoss: true
-  },
-  boss_orjinal: {
-    id: 'boss_orjinal',
-    name: 'Kahraman',
-    hp: 3500,
-    speed: 45,
-    damage: 28,
-    xpValue: 80,
-    goldValue: 100,
-    spriteKey: 'enemies',
-    frame: 9,
-    isBoss: true
   }
+};
+
+// ─── Boss Sezer per-wave stats ───────────────────────────────────────────────
+// Denge: 30s boss fight, 75% verimli oyuncu (tahmini DPS × 0.75 × 30s = boss HP)
+// Wave 1: ~18 DPS → 405 HP | Wave 2: ~32 DPS → 720 HP | Wave 3: ~50 DPS → 1125 HP
+// Wave 4: ~70 DPS → 1575 HP | Wave 5: ~95 DPS → 2137 HP
+const BOSS_SEZER_PER_WAVE: Record<number, { hp: number; speed: number; damage: number; xpValue: number; goldValue: number }> = {
+  1: { hp: 420,  speed: 52, damage: 8,  xpValue: 35,  goldValue: 45  },
+  2: { hp: 720,  speed: 58, damage: 12, xpValue: 55,  goldValue: 65  },
+  3: { hp: 1100, speed: 64, damage: 16, xpValue: 75,  goldValue: 85  },
+  4: { hp: 1550, speed: 70, damage: 20, xpValue: 95,  goldValue: 110 },
+  5: { hp: 2100, speed: 77, damage: 25, xpValue: 120, goldValue: 150 },
 };
 
 export class WaveManager {
@@ -136,15 +89,13 @@ export class WaveManager {
   private cameraX: number = 0;
   private cameraY: number = 0;
   public onWaveComplete?: () => void;
-  public onRivalBossSpawn?: (bossName: string) => void;
-  private rivalBossId: string = '';
-  private sezerSpawned: boolean = false;
-  private rivalBossSpawned: boolean = false;
-  private activeBoss: Enemy | null = null;       // Bölüm sonu bosu takibi
-  private bossFightMode: boolean = false;        // Boss savaşı aktifken normal spawn durur
-  private sezerMode: boolean = false;            // Sezer karakteri oynuyor: spawn yavaş yavaş azalır
+  public onWaveFail?: () => void;
+  public onBossSezerSpawn?: () => void;
+  private bossSpawned: boolean = false;
+  private activeBoss: Enemy | null = null;
+  private bossFightMode: boolean = false;
 
-  /** A2: Callback for spawn preview warnings – called 1s before enemies actually spawn */
+  /** Callback for spawn preview warnings – called 1s before enemies actually spawn */
   public onSpawnPreview?: (positions: { x: number; y: number }[]) => void;
   private pendingSpawn: { positions: { x: number; y: number }[]; count: number; timer: number } | null = null;
 
@@ -155,96 +106,64 @@ export class WaveManager {
     this.difficultyDamageMult = difficultyDamageMult;
   }
 
-  setRivalBossId(id: string): void {
-    this.rivalBossId = id;
-  }
-
-  setSezerMode(enabled: boolean): void {
-    this.sezerMode = enabled;
-  }
-
   startWave(waveNumber: number): void {
     this.currentWave = waveNumber;
     this.waveTimer = 0;
     this.spawnTimer = 0;
     this.waveActive = true;
     this.pendingSpawn = null;
-    this.sezerSpawned = false;
-    this.rivalBossSpawned = false;
+    this.bossSpawned = false;
     this.activeBoss = null;
     this.bossFightMode = false;
   }
 
-  /** F1: Get wave duration — 5 level, her level 1 dakika */
   getWaveDuration(): number {
-    return 60_000; // Tüm bölümler 1 dakika (boss öldürünce erken biter)
+    return 60_000; // Her bölüm 1 dakika
   }
 
-  /** F1/A1: Get current spawn interval based on wave tier and elapsed time */
+  /** Düşman spawn aralığı — ilk 30s'de aktif, boss gelince durur */
   private getCurrentSpawnInterval(): number {
     const wave = this.currentWave;
     const elapsed = this.waveTimer;
     const duration = this.getWaveDuration();
     const progress = elapsed / duration;
 
-    // Base interval by wave tier
+    // Dalga ilerledikçe daha hızlı spawn
     let baseInterval: number;
-    if (wave <= 3) {
-      baseInterval = 2500;        // Easy: slow spawn
-    } else if (wave <= 7) {
-      baseInterval = 1800;        // Medium: moderate
-    } else if (wave <= 12) {
-      baseInterval = 1200;        // Hard: faster
-    } else if (wave <= 20) {
-      baseInterval = 800;         // Very Hard: fast
+    if (wave === 1) {
+      baseInterval = 2400;
+    } else if (wave === 2) {
+      baseInterval = 1900;
+    } else if (wave === 3) {
+      baseInterval = 1500;
+    } else if (wave === 4) {
+      baseInterval = 1200;
     } else {
-      baseInterval = 500;         // Chaos: maximum spawn rate
+      baseInterval = 900;
     }
 
-    // Sezer modu: zaman geçtikçe spawn yavaşlar (dalga sonunda tamamen durur)
-    if (this.sezerMode) {
-      // progress 0→1 arası: interval 1x → 8x artar; %80'den sonra spawn tamamen durur
-      if (progress >= 0.80) return 999999; // spawn durdur
-      const sezerMult = 1 + progress * 8.75; // kademeli artış
-      return baseInterval * sezerMult;
-    }
-
-    // Ramp within wave: spawn faster as wave progresses
-    if (progress > 0.66) {
-      return Math.max(300, baseInterval * 0.5);   // Finale rush
-    } else if (progress > 0.33) {
-      return Math.max(400, baseInterval * 0.75);  // Mid wave
+    // İlk yarıda hafif ramp
+    if (progress > 0.33) {
+      return Math.max(400, baseInterval * 0.8);
     }
     return baseInterval;
   }
 
-  /** F1/A1: Get enemy count per spawn group */
   private getSpawnGroupCount(): number {
     const wave = this.currentWave;
     const elapsed = this.waveTimer;
     const duration = this.getWaveDuration();
     const progress = elapsed / duration;
 
-    // Base count by wave tier
     let baseMin: number;
     let baseRange: number;
-    if (wave <= 3) {
-      baseMin = 1; baseRange = 2;      // 1-2 enemies
-    } else if (wave <= 7) {
-      baseMin = 2; baseRange = 3;      // 2-4 enemies
-    } else if (wave <= 12) {
-      baseMin = 3; baseRange = 4;      // 3-6 enemies
-    } else if (wave <= 20) {
-      baseMin = 4; baseRange = 5;      // 4-8 enemies
-    } else {
-      baseMin = 6; baseRange = 6;      // 6-11 enemies
-    }
+    if (wave === 1) { baseMin = 1; baseRange = 2; }
+    else if (wave === 2) { baseMin = 2; baseRange = 2; }
+    else if (wave === 3) { baseMin = 2; baseRange = 3; }
+    else if (wave === 4) { baseMin = 3; baseRange = 3; }
+    else { baseMin = 3; baseRange = 4; }
 
-    // Ramp within wave
-    if (progress > 0.66) {
-      baseMin += 2;
-      baseRange += 2;
-    } else if (progress > 0.33) {
+    if (progress > 0.33) {
       baseMin += 1;
       baseRange += 1;
     }
@@ -263,7 +182,7 @@ export class WaveManager {
     this.waveTimer += delta;
     this.spawnTimer += delta;
 
-    // A2: Handle pending spawn (after preview delay)
+    // Pending spawn (spawn preview delay)
     if (this.pendingSpawn) {
       this.pendingSpawn.timer -= delta;
       if (this.pendingSpawn.timer <= 0) {
@@ -272,7 +191,7 @@ export class WaveManager {
       }
     }
 
-    // Boss aktifse ölümünü kontrol et → wave biter
+    // Boss ölümünü kontrol et → wave tamamlandı
     if (this.activeBoss && !this.activeBoss.active) {
       this.activeBoss = null;
       this.bossFightMode = false;
@@ -282,49 +201,60 @@ export class WaveManager {
       return;
     }
 
-    // A1: Normal spawn — boss savaşındayken yavaş yavaş azalt
+    // Normal spawn — boss gelmediyse ve boss savaşı yoksa
     if (!this.bossFightMode) {
       const spawnInterval = this.getCurrentSpawnInterval();
       if (this.spawnTimer >= spawnInterval && !this.pendingSpawn) {
         this.spawnTimer = 0;
         this.prepareSpawn();
       }
-    } else {
-      // Boss savaşı: normal spawn interval 5x yavaş (giderek azalıyor)
-      const bossSpawnInterval = this.getCurrentSpawnInterval() * 5;
-      if (this.spawnTimer >= bossSpawnInterval && !this.pendingSpawn) {
-        this.spawnTimer = 0;
-        this.prepareSpawn();
-      }
     }
+    // bossFightMode = true olduğunda spawn tamamen durur (sadece boss vs player)
 
-    // Bölüm sonu bosu: dalganın %60'ında Sezer (veya son dalgada rival boss) spawn olur
+    // Son 30 saniyede Boss Sezer spawn
     const waveDuration = this.getWaveDuration();
-    if (!this.sezerSpawned && this.waveTimer >= waveDuration * 0.60) {
-      this.sezerSpawned = true;
+    if (!this.bossSpawned && this.waveTimer >= waveDuration - 30000) {
+      this.bossSpawned = true;
       this.bossFightMode = true;
-      // Son dalgada rival boss spawn olur, diğerlerinde Sezer
-      if (this.currentWave >= WAVE_COUNT && this.rivalBossId) {
-        const rivalData = ENEMY_DATA[this.rivalBossId];
-        if (rivalData) {
-          this.activeBoss = this.spawnBossNearPlayer(rivalData);
-          this.onRivalBossSpawn?.(rivalData.name);
-          this.rivalBossSpawned = true;
-        }
-      } else {
-        this.activeBoss = this.spawnBossNearPlayer(ENEMY_DATA.boss_sezer);
-      }
+      this.pendingSpawn = null; // Bekleyen spawn'ı iptal et
+      this.activeBoss = this.spawnBossForWave();
+      this.onBossSezerSpawn?.();
     }
 
-    // Süre dolunca da biter (boss kaçtıysa güvenlik)
+    // Süre doldu
     if (this.waveTimer >= waveDuration) {
       this.waveActive = false;
       this.pendingSpawn = null;
-      this.onWaveComplete?.();
+      // Boss hâlâ hayattaysa → dalga başarısız
+      if (this.activeBoss && this.activeBoss.active) {
+        this.activeBoss = null;
+        this.bossFightMode = false;
+        this.onWaveFail?.();
+      } else {
+        this.onWaveComplete?.();
+      }
     }
   }
 
-  private spawnBossNearPlayer(bossData: EnemyData): Enemy | null {
+  /** Mevcut dalga için Boss Sezer verisi — dalga sayısına göre ölçeklenmiş */
+  private getBossForWave(): EnemyData {
+    const wave = Math.min(this.currentWave, 5);
+    const cfg = BOSS_SEZER_PER_WAVE[wave];
+    return {
+      id: 'boss_sezer',
+      name: 'Sezer',
+      hp: cfg.hp,
+      speed: cfg.speed,
+      damage: cfg.damage,
+      xpValue: cfg.xpValue,
+      goldValue: cfg.goldValue,
+      spriteKey: 'enemies',
+      frame: 6,
+      isBoss: true
+    };
+  }
+
+  private spawnBossForWave(): Enemy | null {
     const boss = this.enemyPool.get();
     if (!boss) return null;
     const pos = getSpawnPositionOutsideCamera(
@@ -332,14 +262,15 @@ export class WaveManager {
       GAME_WIDTH, GAME_HEIGHT,
       ARENA_WIDTH, ARENA_HEIGHT
     );
-    const waveMultiplier = this.getWaveMultiplier();
-    const damageMultiplier = this.getDamageMultiplier();
-    const goldMultiplier = this.getGoldMultiplier();
-    boss.spawn(pos.x, pos.y, bossData, waveMultiplier, damageMultiplier, goldMultiplier);
+    const bossData = this.getBossForWave();
+    // Boss HP difficulty ile scale edilir ama damage sadece dalga bazlı
+    const hpMult = this.difficultyHpMult;
+    const dmgMult = this.difficultyDamageMult;
+    boss.spawn(pos.x, pos.y, bossData, hpMult, dmgMult, 1.0);
     return boss;
   }
 
-  /** A2: Pre-generate spawn positions, emit preview, then spawn after 1s delay */
+  /** Pre-generate spawn positions, emit preview, then spawn after 1s delay */
   private prepareSpawn(): void {
     const count = this.getSpawnGroupCount();
     const positions: { x: number; y: number }[] = [];
@@ -352,38 +283,28 @@ export class WaveManager {
       ));
     }
 
-    // Emit preview warning
     this.onSpawnPreview?.(positions);
-
-    // Schedule actual spawn in 1 second
     this.pendingSpawn = { positions, count, timer: 1000 };
   }
 
-  /** C3: Compute HP scaling multiplier based on wave tier + difficulty */
+  /** C3: HP scaling multiplier based on wave tier + difficulty */
   private getWaveMultiplier(): number {
     const wave = this.currentWave;
     let base: number;
-    if (wave <= 5) {
-      base = 1 + (wave - 1) * 0.12;     // 1.0 → 1.48x (daha yumuşak giriş)
-    } else if (wave <= 15) {
-      base = 1.5 + (wave - 6) * 0.15;   // 1.5 → 3.0x (önceki 0.2 → 0.15, daha yumuşak)
-    } else {
-      base = 3.0 + (wave - 16) * 0.25;  // 3.0x+ (geç oyun)
-    }
+    if (wave <= 2)  { base = 1.0 + (wave - 1) * 0.15; }
+    else if (wave <= 4) { base = 1.3 + (wave - 3) * 0.25; }
+    else { base = 1.8; }
     return base * this.difficultyHpMult;
   }
 
-  /** C3: Compute damage scaling multiplier based on wave + difficulty */
   private getDamageMultiplier(): number {
-    return (1 + (this.currentWave - 1) * 0.05) * this.difficultyDamageMult;
+    return (1 + (this.currentWave - 1) * 0.08) * this.difficultyDamageMult;
   }
 
-  /** Gold multiplier: scales up with wave so late-game enemies reward more (max 3x cap) */
   private getGoldMultiplier(): number {
-    return Math.min(1 + (this.currentWave - 1) * 0.20, 3.0); // wave 1=1×, wave 5=1.8×, wave 10=2.8×, cap=3×
+    return Math.min(1 + (this.currentWave - 1) * 0.20, 3.0);
   }
 
-  /** Spawn enemies at pre-determined positions */
   private spawnEnemiesAtPositions(positions: { x: number; y: number }[]): void {
     const waveMultiplier = this.getWaveMultiplier();
     const damageMultiplier = this.getDamageMultiplier();
@@ -392,65 +313,36 @@ export class WaveManager {
     for (let i = 0; i < positions.length; i++) {
       const enemy = this.enemyPool.get();
       if (!enemy) break;
-
       const enemyType = this.getRandomEnemyType();
       enemy.spawn(positions[i].x, positions[i].y, ENEMY_DATA[enemyType], waveMultiplier, damageMultiplier, goldMultiplier);
     }
   }
 
-  /** F1: Enemy type availability by wave tier */
   private getRandomEnemyType(): string {
     const wave = this.currentWave;
-
-    // Wave 1-3: Easy – only skeletons
-    if (wave <= 3) {
-      return 'skeleton';
-    }
-
-    // Wave 4-7: Medium – add bats and ghosts
-    if (wave <= 7) {
+    if (wave === 1) return 'skeleton';
+    if (wave === 2) {
       const types = ['skeleton', 'skeleton', 'bat', 'ghost'];
       return types[Math.floor(Math.random() * types.length)];
     }
-
-    // Wave 8-12: Hard – add vampires and archers
-    if (wave <= 12) {
+    if (wave === 3) {
       const types = ['skeleton', 'bat', 'ghost', 'vampire', 'archer'];
       return types[Math.floor(Math.random() * types.length)];
     }
-
-    // Wave 13-20: Very Hard – all types, weighted toward harder enemies
-    if (wave <= 20) {
-      const types = ['skeleton', 'bat', 'ghost', 'ghost', 'vampire', 'vampire', 'archer', 'archer'];
+    if (wave === 4) {
+      const types = ['bat', 'ghost', 'vampire', 'vampire', 'archer', 'archer'];
       return types[Math.floor(Math.random() * types.length)];
     }
-
-    // Wave 21-30: Chaos – all types, heavily weighted toward hard enemies
-    const types = ['bat', 'ghost', 'vampire', 'vampire', 'archer', 'archer', 'vampire'];
+    // Wave 5
+    const types = ['ghost', 'vampire', 'vampire', 'archer', 'archer', 'vampire'];
     return types[Math.floor(Math.random() * types.length)];
   }
 
-  get wave(): number {
-    return this.currentWave;
-  }
-
-  get isWaveActive(): boolean {
-    return this.waveActive;
-  }
-
-  get waveProgress(): number {
-    return Math.min(this.waveTimer / this.getWaveDuration(), 1);
-  }
-
-  get waveTimeRemaining(): number {
-    return Math.max(0, this.getWaveDuration() - this.waveTimer);
-  }
-
-  get totalWaves(): number {
-    return WAVE_COUNT;
-  }
-
-  get isLastWave(): boolean {
-    return this.currentWave >= WAVE_COUNT;
-  }
+  get wave(): number { return this.currentWave; }
+  get isWaveActive(): boolean { return this.waveActive; }
+  get waveProgress(): number { return Math.min(this.waveTimer / this.getWaveDuration(), 1); }
+  get waveTimeRemaining(): number { return Math.max(0, this.getWaveDuration() - this.waveTimer); }
+  get totalWaves(): number { return WAVE_COUNT; }
+  get isLastWave(): boolean { return this.currentWave >= WAVE_COUNT; }
+  get isBossFightActive(): boolean { return this.bossFightMode; }
 }

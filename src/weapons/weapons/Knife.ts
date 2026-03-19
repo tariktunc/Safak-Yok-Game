@@ -39,6 +39,29 @@ export class Knife extends WeaponBase {
   }
 
   attack(): void {
+    // BIN KESİK evrimi: 8 yöne eşit aralıklı ateş
+    if (this.data.id === 'thousand_edge') {
+      const dirCount = 8;
+      const angleStep = (Math.PI * 2) / dirCount;
+      for (let i = 0; i < dirCount; i++) {
+        const proj = this.projectilePool.get();
+        if (!proj) continue;
+        proj.fire(
+          this.owner.x, this.owner.y,
+          i * angleStep,
+          this.data.projectileSpeed,
+          this.effectiveDamage,
+          this.data.pierce,
+          this.data.id,
+          0
+        );
+        proj.setScale(3.5, 0.4);
+        proj.setTint(0xff88ff); // Mor parıltı — evrimleşmiş
+      }
+      this.audioManager?.playShoot();
+      return;
+    }
+
     // Auto-aim: fire at nearest enemy — yoksa ateş etme
     const nearest = this.findNearestEnemy();
     if (!nearest) return;

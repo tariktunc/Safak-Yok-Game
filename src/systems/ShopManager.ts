@@ -62,8 +62,8 @@ const WEAPON_ITEMS: ShopItemData[] = [
     cost: 30, statModifiers: {}, maxStack: 1, rarity: 'uncommon', icon: 'weapon_knife', type: 'weapon'
   },
   {
-    id: 'weapon_whip', name: 'Kırbaç', description: 'Yakın: süpürme yay saldırısı',
-    cost: 30, statModifiers: {}, maxStack: 1, rarity: 'uncommon', icon: 'weapon_whip', type: 'weapon'
+    id: 'weapon_sword', name: 'Kılıç', description: 'Yakın: geniş yay kılıç darbesi',
+    cost: 30, statModifiers: {}, maxStack: 1, rarity: 'uncommon', icon: 'weapon_sword', type: 'weapon'
   },
   {
     id: 'weapon_garlic', name: 'Sarımsak', description: 'Aura: yakındaki düşmanlara hasar',
