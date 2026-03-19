@@ -104,9 +104,20 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     const frame = data.frame !== undefined ? data.frame : this.getFrameForType(data.id);
     this.setTexture('enemies', frame);
 
-    // Bosses: larger sprite
+    // Boss boyut ölçeği (player = 64×1.5 = 96px referans)
+    // 48px frame üzerinden:
+    //   ×2.0 = 96px  → Sezer (mini-boss, player ile eşit boy)
+    //   ×2.5 = 120px → Necromancer (player'dan %25 büyük)
+    //   ×3.0 = 144px → Rakip karakter bosslari (player'dan %50 büyük)
     if (data.isBoss) {
-      this.setScale(data.id === 'boss_sezer' ? 1.5 : 2);
+      if (data.id === 'boss_sezer') {
+        this.setScale(2.0);
+      } else if (data.id === 'boss_necromancer') {
+        this.setScale(2.5);
+      } else {
+        // boss_tarik, boss_mumin, boss_orjinal
+        this.setScale(3.0);
+      }
     }
   }
 
@@ -298,11 +309,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.hpBar.setVisible(true);
     this.hpBar.clear();
 
-    const isBoss = this.enemyData?.id === 'boss_necromancer';
-    const barWidth = isBoss ? 40 : 20;
+    // Bar boyutu ve pozisyonu, sprite'ın gerçek ekran boyutuna göre hesaplanır.
+    // Sprite frame: 48×48, origin: (0.5, 0.5) → üst kenar: this.y - (48 * scaleY) / 2
+    const spriteHalfH = 48 * Math.abs(this.scaleY) / 2;
+    const isBoss = this.enemyData?.isBoss ?? false;
     const barHeight = isBoss ? 5 : 3;
+    const barWidth  = Math.round(48 * Math.abs(this.scaleX) * 0.85);
     const barX = this.x - barWidth / 2;
-    const barY = this.y - (isBoss ? 26 : 14);
+    const barY = this.y - spriteHalfH - barHeight - 3;
 
     // Background
     this.hpBar.fillStyle(0x333333, 0.8);

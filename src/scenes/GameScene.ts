@@ -134,7 +134,7 @@ export class GameScene extends Phaser.Scene {
     // Create player at center with character-specific sprite
     const spriteKey = charData?.spriteKey ?? 'player-tarik';
     this.player = new Player(this, ARENA_WIDTH / 2, ARENA_HEIGHT / 2, spriteKey, characterId);
-    this.player.setScale(1.75); // Player 112px, enemy 48px
+    this.player.setScale(1.5); // Player: 64×1.5 = 96px ekranda
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
     // Apply character stats
