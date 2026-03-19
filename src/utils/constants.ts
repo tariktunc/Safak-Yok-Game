@@ -21,11 +21,11 @@ export const PLAYER_MAX_HP = 100;
 export const PLAYER_PICKUP_RANGE = 80;
 export const PLAYER_INVINCIBILITY_TIME = 500; // ms
 
-// XP thresholds per level (cumulative) – 30 levels, yavaş ilerleme
+// XP thresholds per level (cumulative) – 20 level, 5 dalga × 60s için ayarlandı
+// Hedef: Wave1→L5, Wave2→L8, Wave3→L11-12, Wave4→L15, Wave5→L18-19 (maks L20)
 export const XP_THRESHOLDS = [
-  0,    8,   20,   38,   62,   92,  130,  176,  230,  294,   // 1-10: yavaşlatılmış başlangıç
-  370, 460,  565,  686,  825,  984, 1164, 1368, 1598, 1858,  // 11-20: mid game
- 2150, 2478, 2846, 3258, 3718, 4230, 4798, 5426, 6118, 6880  // 21-30: geç oyun
+  0,   12,   28,   50,   76,  108,  146,  190,  240,  298,   // L1-10
+370,  452,  546,  654,  776,  916, 1074, 1254, 1458, 1690   // L11-20
 ];
 
 // Wave

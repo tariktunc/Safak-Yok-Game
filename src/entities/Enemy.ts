@@ -29,6 +29,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private vampireCharging: boolean = true;
   private vampireChargeEnd: number = 0;
   private vampirePauseEnd: number = 0;
+  private vampireHealCooldown: number = 0; // ms — sürekli heal exploit'i önler
 
   // Boss Necromancer behavior
   private necroSummonTimer: number = 0;
@@ -250,8 +251,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
    * Returns bonus healing amount (vampire heals on hit).
    */
   onHitPlayer(): void {
-    if (this.enemyData.id === 'vampire') {
+    if (this.enemyData.id === 'vampire' && this.vampireHealCooldown <= 0) {
       this.currentHp = Math.min(this.currentHp + 10, this.maxHp);
+      this.vampireHealCooldown = 1500; // 1.5 saniyede bir heal yapabilir
     }
   }
 
@@ -356,6 +358,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   private updateVampire(_time: number, dt: number): void {
+    if (this.vampireHealCooldown > 0) {
+      this.vampireHealCooldown -= dt * 1000;
+    }
     this.vampireChargeTimer += dt;
 
     if (this.vampireCharging) {
@@ -578,7 +583,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       const hitRadius = radius + 6; // 6 = archer projectile radius
 
       if (distSq < hitRadius * hitRadius) {
-        totalDamage += this.damage;
+        totalDamage += Math.floor(this.damage * 0.55); // Necromancer ile orantılı (0.5x), Archer biraz fazla
         gfx.destroy();
         this.archerProjectiles.splice(i, 1);
       }
